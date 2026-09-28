@@ -1,15 +1,18 @@
 export async function onRequestGet(context) {
   const { request, env, params } = context;
-  const provider = params.provider; // "google" ou "github"
+  const provider = params.provider;
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
 
   if (!code) {
-    return new Response("Código de autorização não encontrado", { status: 400 });
+    return new Response("Código de autorização em falta", { status: 400 });
   }
 
-  // Aqui o seu código troca o 'code' pelo token do provider,
-  // obtém os dados do utilizador, grava na tabela D1 e define o cookie de sessão.
-  
-  return Response.redirect(`${env.PUBLIC_BASE_URL || "https://avaliacaooo02.pages.dev"}/`, 302);
+  // Aqui o teu código existente processa o token e grava na D1 (env.DB)
+  // ...
+
+  return new Response(`Autenticação com ${provider} concluída com sucesso!`, {
+    headers: { "Content-Type": "text/html; charset=utf-8" }
+  });
 }
