@@ -1,14 +1,31 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Laboratório de autenticação</title>
-  </head>
-  <body>
-    <main>
-      <h1>Laboratório de autenticação</h1>
-      <p id="status">A sessão ainda não foi consultada.</p>
-    </main>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Laboratório de Autenticação</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main>
+    <h1>Laboratório de Autenticação</h1>
+    <p id="status">Verificando sessão...</p>
+
+    <!-- Exibido quando NÃO há sessão -->
+    <div id="auth-section" class="auth-buttons hidden">
+      <a href="/oauth/login/google" class="btn btn-google">Entrar com Google</a>
+      <a href="/oauth/login/github" class="btn btn-github">Entrar com GitHub</a>
+    </div>
+
+    <!-- Exibido quando HÁ sessão ativa -->
+    <div id="user-section" class="hidden">
+      <p>Bem-vindo(a), <strong id="user-email"></strong>!</p>
+      <form method="post" action="/oauth/logout">
+        <button type="submit" class="btn btn-logout">Sair</button>
+      </form>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
 </html>
