@@ -1,32 +1,12 @@
-// functions/oauth/callback/google.js
-export async function onRequestGet({ request, env }) {
-  const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  if (!code) return new Response("Sem code", { status: 400 });
-
-  const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: `${url.origin}/oauth/callback/google`,
-      grant_type: "authorization_code",
-    }),
+function loginGoogle() {
+  const params = new URLSearchParams({
+    client_id: "SEU_CLIENT_ID.apps.googleusercontent.com",
+    redirect_uri: `${window.location.origin}/oauth/callback/google`,
+    response_type: "code",
+    scope: "openid email profile",
+    access_type: "online",
+    prompt: "select_account",
   });
-  const tokens = await tokenRes.json();
-  if (!tokenRes.ok) return new Response(JSON.stringify(tokens), { status: 400 });
-
-  const user = await (await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-    headers: { Authorization: `Bearer ${tokens.access_token}` },
-  })).json();
-
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: "/",
-      "Set-Cookie": `session=${encodeURIComponent(user.email)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
-    },
-  });
+  window.location.href =
+    "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
 }
