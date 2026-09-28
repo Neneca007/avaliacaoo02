@@ -1,1 +1,122 @@
+import { generateSessionId, hashToken } from "../../_shared/crypto.js";
 
+export async function onRequestGet(context) {
+  const { request, env, params } = context;
+  const provider = params.provider;
+  const url = new URL(request.url);
+
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const error = url.searchParams.get("error");
+
+  if (error) {
+    return new Response(`Erro do provedor: ${error}`, { status: 400 });
+  }
+
+  if (!code || !state) {
+    return new Response("Parâmetros ausentes (code ou state).", { status: 400 });
+  }
+
+  // 1. Validar e consumir a transação OAuth no D1
+  const tx = await env.DB.prepare(
+    "SELECT * FROM oauth_transactions WHERE state = ? AND provider = ?"
+  )
+    .bind(state, provider)
+    .first();
+
+  if (!tx) {
+    return new Response("Estado OAuth inválido ou expirado.", { status: 400 });
+  }
+
+  // Remove a transação para evitar ataques de reutilização (Replay)
+  await env.DB.prepare("DELETE FROM oauth_transactions WHERE state = ?")
+    .bind(state)
+    .run();
+
+  let userInfo = null;
+
+  // 2. Trocar código por token (Google vs GitHub)
+  if (provider === "google") {
+    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${env.PUBLIC_BASE_URL}/oauth/callback/google`,
+        grant_type: "authorization_code",
+        code_verifier: tx.code_verifier,
+      }),
+    });
+
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok) {
+      return new Response(`Erro no token Google: ${JSON.stringify(tokenData)}`, { status: 400 });
+    }
+
+    // Obter dados do utilizador
+    const userRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+    userInfo = await userRes.json();
+  } else if (provider === "github") {
+    const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: new URLSearchParams({
+        client_id: env.GITHUB_CLIENT_ID,
+        client_secret: env.GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: `${env.PUBLIC_BASE_URL}/oauth/callback/github`,
+      }),
+    });
+
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || tokenData.error) {
+      return new Response(`Erro no token GitHub: ${JSON.stringify(tokenData)}`, { status: 400 });
+    }
+
+    // Obter dados do utilizador no GitHub
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+        "User-Agent": "Cloudflare-Pages-OAuth",
+      },
+    });
+    userInfo = await userRes.json();
+  } else {
+    return new Response("Provedor não suportado.", { status: 400 });
+  }
+
+  // 3. Criar Sessão no D1 e definir Cookie HTTP-Only
+  const rawSessionToken = generateSessionId();
+  const hashedSessionToken = await hashToken(rawSessionToken);
+  const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60; // 7 dias
+
+  const userPayload = JSON.stringify({
+    id: userInfo.id || userInfo.sub,
+    name: userInfo.name || userInfo.login,
+    email: userInfo.email || null,
+    picture: userInfo.picture || userInfo.avatar_url,
+    provider,
+  });
+
+  await env.DB.prepare(
+    "INSERT INTO sessions (session_token, user_info, provider, expires_at) VALUES (?, ?, ?, ?)"
+  )
+    .bind(hashedSessionToken, userPayload, provider, expiresAt)
+    .run();
+
+  // Redirecionar para a página principal com o Cookie de sessão
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: "/",
+      "Set-Cookie": `session=${rawSessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`,
+    },
+  });
+}
