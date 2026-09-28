@@ -1,18 +1,31 @@
 export async function onRequestGet(context) {
-  const { request, env, params } = context;
+  const { env, params } = context;
   const provider = params.provider;
-  const url = new URL(request.url);
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
 
-  if (!code) {
-    return new Response("Código de autorização em falta", { status: 400 });
+  const cleanValue = (val, fallback) => {
+    if (!val) return fallback;
+    return val.replace(/[\[\]{}"']/g, "").trim();
+  };
+
+  const baseUrl = cleanValue(env.PUBLIC_BASE_URL, "https://avaliacaooo02.pages.dev");
+
+  if (provider === "google") {
+    const clientId = cleanValue(env.GOOGLE_CLIENT_ID, "");
+    const redirectUri = cleanValue(env.GOOGLE_REDIRECT_URI, `${baseUrl}/oauth/callback/google`);
+
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent("openid email profile")}&prompt=select_account`;
+
+    return Response.redirect(googleAuthUrl, 302);
   }
 
-  // Aqui o teu código existente processa o token e grava na D1 (env.DB)
-  // ...
+  if (provider === "github") {
+    const clientId = cleanValue(env.GITHUB_CLIENT_ID, "");
+    const redirectUri = cleanValue(env.GITHUB_REDIRECT_URI, `${baseUrl}/oauth/callback/github`);
 
-  return new Response(`Autenticação com ${provider} concluída com sucesso!`, {
-    headers: { "Content-Type": "text/html; charset=utf-8" }
-  });
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent("user:email read:user")}`;
+
+    return Response.redirect(githubAuthUrl, 302);
+  }
+
+  return new Response("Provider não suportado", { status: 400 });
 }
